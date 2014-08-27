@@ -41,10 +41,11 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, name='__bot__', room_id='eab63d0ea060b828578a4ae044f24d03'):
+    def __init__(self, name='__bot__', room_id='eab63d0ea060b828578a4ae044f24d03', owner=None):
         self.state = STATES.SLEEPING
         self.name = name
         self.room_id = room_id
+        self.owner = owner
         self.listeners = []
 
         #avatar
@@ -151,7 +152,8 @@ class BotProtocol(LineReceiver):
             print msg['data']['userId'] + ' - ' + msg['data']['message']
             sender = msg['data']['userId']
             text = msg['data']['message']
-            if text[0] == '!': #all command *must* start with !
+                                  #only accept commands from our owner or from anyone if no owner
+            if text[0] == '!' and (self.owner is None or self.owner == sender):   # all command *must* start with !
                 try:
                     if text.startswith("!echo"):
                         self.sendChat(text[5:])
@@ -169,6 +171,11 @@ class BotProtocol(LineReceiver):
                     elif text.startswith("!scale"):
                         command = text.split(" ")
                         self.avatar_scale = command[1]
+                    elif text.split("!owner"):
+                        command = text.split(" ")
+                        self.owner = command[1]
+                        self.sendChat("Owner changed to %s. Your wish is my command" % (self.owner,))
+
                 except Exception as e:
                     self.sendChat("ERROR!" + str(e))
 
