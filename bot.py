@@ -171,7 +171,7 @@ class BotProtocol(LineReceiver):
                     elif text.startswith("!scale"):
                         command = text.split(" ")
                         self.avatar_scale = command[1]
-                    elif text.split("!owner"):
+                    elif text.startswith("!owner"):
                         command = text.split(" ")
                         self.owner = command[1]
                         self.sendChat("Owner changed to %s. Your wish is my command" % (self.owner,))
