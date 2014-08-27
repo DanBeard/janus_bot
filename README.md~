@@ -9,17 +9,18 @@ dependencies: python2.7, Twisted
 
 The current commands are as follows:
 
-    !echo [text]
 The bot will say [text]
+    !echo [text]
 
-    !come
 The bot will come to you
+    !come
 
-    !follow [name]
 The bot will follow the user with the name [name]. If no name is specificed, the bot will follow you
+    !follow [name]
 
-    !stay
 The bot will stay put
+    !stay
 
-    !scale [float]
 The bot will grow or shrink to normal_size*[float]    
+    !scale [float]
+
