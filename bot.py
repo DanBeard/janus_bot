@@ -31,6 +31,7 @@ from twisted.internet.protocol import Factory, Protocol, ClientFactory
 from twisted.internet import reactor, protocol, defer
 from twisted.internet.endpoints import TCP4ClientEndpoint
 import json
+import re
 
 
 class STATES:
@@ -52,6 +53,7 @@ class BotProtocol(LineReceiver):
         #TODO: figure out what each one of these values represents and turn it into a list of floats
         self.avatar_pos = "-0.0822233 -0.960175 6.24151 0.00863815 -0.14263 -0.989738 0.00863815 -0.14263 -0.989738 0.00124479 0.989776 -0.142625"
         self.avatar_scale = 1
+        self.avatar_html = "<FireBoxRoom>|<Assets>|</Assets>|<Room>|<Ghost~id=&%s&~scale=&1.00~1.00~1.00&~/>|</Room>|</FireBoxRoom>|" % (self.name)
         #state specific variables
         self.following = None
 
@@ -89,7 +91,7 @@ class BotProtocol(LineReceiver):
         self.avatar_pos = pos
         self.avatar_scale = scale
         #TODO: Actually parse and reconstruct these instead of treating it like a magic string
-        return pos + " . " + "<FireBoxRoom>|<Assets>|</Assets>|<Room>|<Ghost~id=&%s&~scale=&%s~%s~%s&~/>|</Room>|</FireBoxRoom>|" % (self.name, scale, scale, scale)
+        return pos + " . " + self.avatar_html
 
 
     def tick(self):
@@ -138,6 +140,27 @@ class BotProtocol(LineReceiver):
                 self.sendLine(json.dumps({"method": "move", "data": to_send}))
         return False  # never eat
 
+    def clone_avatar(self, name):
+        """
+        Listen to move commands and make my avatar
+        """
+        def listener(msg):
+            if msg['method'] == 'user_moved' and msg['data']['userId'] == name:
+                self.avatar_html = msg['data']['position'].split(" . ")[1]
+                print "cloned" + str(self.avatar_html)
+                return True
+            else:
+                return False
+
+        self.appendListener(listener)
+
+    def change_scale(self, scale):
+        """
+        change the scale in the avatar_html
+        """
+        self.avatar_html = re.sub(r'scale=&[\d\.]+~[\d\.]+~[\d\.]+', 'scale=&%s~%s~%s' % (scale, scale, scale),
+                                  self.avatar_html)
+
     def sendChat(self, text):
         """
         Talk bot!
@@ -170,11 +193,15 @@ class BotProtocol(LineReceiver):
                         reactor.callLater(1, lambda: self.setState(STATES.STAYING))
                     elif text.startswith("!scale"):
                         command = text.split(" ")
-                        self.avatar_scale = command[1]
+                        self.change_scale(command[1])
                     elif text.startswith("!owner"):
                         command = text.split(" ")
                         self.owner = command[1]
                         self.sendChat("Owner changed to %s. Your wish is my command" % (self.owner,))
+                    elif text.startswith("!clone"):
+                        print "cloning..."
+                        command = text.split(" ")
+                        self.clone_avatar(command[1])
 
                 except Exception as e:
                     self.sendChat("ERROR!" + str(e))
