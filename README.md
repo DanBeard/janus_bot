@@ -29,3 +29,7 @@ The bot will grow or shrink to normal_size*[float]
 
     !scale [float]
 
+The bot will clone the avatar of the player
+
+    !clone [player_name]
+

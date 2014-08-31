@@ -42,7 +42,7 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, name='__bot__', room_id='eab63d0ea060b828578a4ae044f24d03', owner=None):
+    def __init__(self, name='yawgmoth_bot', room_id='eab63d0ea060b828578a4ae044f24d03', owner="yawgmoth"):
         self.state = STATES.SLEEPING
         self.name = name
         self.room_id = room_id
@@ -137,7 +137,9 @@ class BotProtocol(LineReceiver):
                 pos = msg['data']['position'].split(" . ")[0]
                 self.avatar_pos = pos
                 to_send = self.getAvatarString(pos=pos)
-                self.sendLine(json.dumps({"method": "move", "data": to_send}))
+                #send it 1 second later
+                reactor.callLater(.5, self.sendLine, json.dumps({"method": "move", "data": to_send}))
+
         return False  # never eat
 
     def clone_avatar(self, name):
