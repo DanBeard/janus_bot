@@ -42,7 +42,8 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, name='yawgmoth_bot', room_id='eab63d0ea060b828578a4ae044f24d03', owner="yawgmoth"):
+    def __init__(self, name='yawgmoth_bot', room_id='eab63d0ea060b828578a4ae044f24d03', owner=None,
+                 command_line_input=True):
         self.state = STATES.SLEEPING
         self.name = name
         self.room_id = room_id
@@ -61,10 +62,22 @@ class BotProtocol(LineReceiver):
         self.listeners.append(self.chatListener)
         self.listeners.append(self.followingListener)
 
+        if command_line_input:
+            reactor.callInThread(self._command_line_input)
+
     def connectionMade(self):
         LineReceiver.connectionMade(self)
         self.state = STATES.LOGGING_IN
         self.login()
+
+    def _command_line_input(self):
+        """
+        Blocking method. DO NOT CALL FROM REACTOR!
+        Will take user input using raw_input and pass it as a chat or command
+        """
+        while True:
+            chat = raw_input(":")
+            reactor.callFromThread(self.sendChat, chat, True)
 
     @defer.inlineCallbacks
     def login(self):
@@ -139,7 +152,12 @@ class BotProtocol(LineReceiver):
                 to_send = self.getAvatarString(pos=pos)
                 #send it 1 second later
                 reactor.callLater(.5, self.sendLine, json.dumps({"method": "move", "data": to_send}))
-
+            elif msg['method'] == 'user_leave' and msg['data']['userId'] == self.following:
+                if 'newRoomId' in msg['data'] is None:
+                    self.state = STATES.STAYING
+                else:
+                    self.sendLine(json.dumps({'method': 'subscribe', 'data': {'roomId': msg['data']['newRoomId']}}))
+                    self.sendLine(json.dumps({'method': 'enter_room', 'data': {'roomId': msg['data']['newRoomId']}}))
         return False  # never eat
 
     def clone_avatar(self, name):
@@ -163,11 +181,16 @@ class BotProtocol(LineReceiver):
         self.avatar_html = re.sub(r'scale=&[\d\.]+~[\d\.]+~[\d\.]+', 'scale=&%s~%s~%s' % (scale, scale, scale),
                                   self.avatar_html)
 
-    def sendChat(self, text):
+    def sendChat(self, text, listen_to_self=False):
         """
         Talk bot!
+        @text: The text to say
+        @listen_to_self: If true will run the listener on what this bot says
         """
         self.sendLine(json.dumps({"method": "chat", "data": str(text)}))
+        if listen_to_self:
+
+            self.chatListener({"method": 'user_chat', "data": {'userId': self.name, "message": text}})
 
     def chatListener(self, msg):
         """
@@ -178,7 +201,7 @@ class BotProtocol(LineReceiver):
             sender = msg['data']['userId']
             text = msg['data']['message']
                                   #only accept commands from our owner or from anyone if no owner
-            if text[0] == '!' and (self.owner is None or self.owner == sender):   # all command *must* start with !
+            if text[0] == '!' and (self.owner is None or self.owner == sender or sender == self.name):   # all command *must* start with !
                 try:
                     if text.startswith("!echo"):
                         self.sendChat(text[5:])
