@@ -32,7 +32,9 @@ from twisted.internet import reactor, protocol, defer
 from twisted.internet.endpoints import TCP4ClientEndpoint
 import json
 import re
-
+import math
+#Constants
+FOLLOW_DIST = 1.5  # if the update distance is less than this, it won't move (to stop clipping)
 
 class STATES:
     SLEEPING = 0
@@ -42,7 +44,7 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, name='yawgmoth_bot', room_id='eab63d0ea060b828578a4ae044f24d03', owner=None,
+    def __init__(self, name='__minion__', room_id='eab63d0ea060b828578a4ae044f24d03', owner=None,
                  command_line_input=True):
         self.state = STATES.SLEEPING
         self.name = name
@@ -52,9 +54,12 @@ class BotProtocol(LineReceiver):
 
         #avatar
         #TODO: figure out what each one of these values represents and turn it into a list of floats
-        self.avatar_pos = "-0.0822233 -0.960175 6.24151 0.00863815 -0.14263 -0.989738 0.00863815 -0.14263 -0.989738 0.00124479 0.989776 -0.142625"
+        self.avatar_pos = [float(x) for x in
+                            "-0.0822233 -0.960175 6.24151 0.00863815 -0.14263 -0.989738 0.00863815 -0.14263 -0.989738 0.00124479 0.989776 -0.142625".split(" ")]
         self.avatar_scale = 1
-        self.avatar_html = "<FireBoxRoom>|<Assets>|</Assets>|<Room>|<Ghost~id=&%s&~scale=&1.00~1.00~1.00&~/>|</Room>|</FireBoxRoom>|" % (self.name)
+        #self.avatar_html = "<FireBoxRoom>|<Assets>|</Assets>|<Room>|<Ghost~id=&%s&~scale=&1.00~1.00~1.00&~/>|</Room>|</FireBoxRoom>|" % (self.name)
+        self.avatar_html = "<FireBoxRoom>|<Assets>|<AssetObject~id=&nullhead&~/>|<AssetObject~id=&BOT&~src=&http://varx.org/janusvr/avatars/claptrap/Claptrap5.obj&~mtl=&http://varx.org/janusvr/avatars/claptrap/Claptrap5.mtl&~/>|</Assets>|<Room>|\
+        <Ghost~id=&%s&~head_id=&nullhead&~body_id=&BOT&~scale=&1.2~1.2~1.2&~col=&1.66~1.66~1.66&~lighting=&false&~eye_pos=&0~0.5~-0.25&~/>|</Room>|</FireBoxRoom>|" % (self.name)
         #state specific variables
         self.following = None
 
@@ -95,16 +100,23 @@ class BotProtocol(LineReceiver):
     def getAvatarString(self, pos=None, scale=None):
         """
         Get the full avatar string to pass along to the server with the move command
-        @param pos: (Optional) The position to be at. Will default to current position
-        @param scale: (Optionl) The scale of the avatar. Will default to current scale
+        @param pos: (Optional) The position to be at. Will default to current position.
+        Must be 12 floats, or a string of space separated floats.
+        [x, y, z, pitch, yaw, roll, head_x, head_y, head_z, head_pitch, head_yaw, head_roll]
+        @type pos: list[float] | str
+        @param scale: (Optional) The scale of the avatar. Will default to current scale
         """
         pos = self.avatar_pos if pos is None else pos
         scale = self.avatar_scale if scale is None else scale
 
+        if type(pos) == str:
+            pos = [float(x) for x in pos.split(" ")]
+
         self.avatar_pos = pos
         self.avatar_scale = scale
+
         #TODO: Actually parse and reconstruct these instead of treating it like a magic string
-        return pos + " . " + self.avatar_html
+        return ' '.join([str(x) for x in self.avatar_pos]) + " . " + self.avatar_html
 
 
     def tick(self):
@@ -140,6 +152,17 @@ class BotProtocol(LineReceiver):
         """
         reactor.callLater(0, lambda: self.listeners.append(listener))
 
+    def do_follow(self, new_pos):
+        pos = self.avatar_pos
+        dist = math.sqrt((self.latest_follow_pos[0] - pos[0])**2 + (self.latest_follow_pos[1] - pos[1])**2 + (self.latest_follow_pos[2] - pos[2])**2)
+        if dist > FOLLOW_DIST:
+            print dist
+            to_send = self.getAvatarString(pos=new_pos)
+            #send it .25 second later
+            self.sendLine(json.dumps({"method": "move", "data": to_send}))
+        else:
+            self.sendLine(json.dumps({"method": "move", "data": self.getAvatarString()}))
+
     def followingListener(self, msg):
         """
         This listener is permanant and will update the bot's position to match self.following if we're in
@@ -147,11 +170,13 @@ class BotProtocol(LineReceiver):
         """
         if self.state == STATES.FOLLOWING and self.following is not None:
             if msg['method'] == 'user_moved' and msg['data']['userId'] == self.following:
-                pos = msg['data']['position'].split(" . ")[0]
-                self.avatar_pos = pos
-                to_send = self.getAvatarString(pos=pos)
-                #send it 1 second later
-                reactor.callLater(.5, self.sendLine, json.dumps({"method": "move", "data": to_send}))
+
+                pos = [float(x) for x in re.split(r" \.|S ", msg['data']['position'],1)[0].strip().split(" ")]
+                #old_pos = self.avatar_pos
+                self.latest_follow_pos = pos
+
+                reactor.callLater(.5, self.do_follow, pos)
+
             elif msg['method'] == 'user_leave' and msg['data']['userId'] == self.following:
                 if 'newRoomId' in msg['data'] is None:
                     self.state = STATES.STAYING
@@ -166,7 +191,7 @@ class BotProtocol(LineReceiver):
         """
         def listener(msg):
             if msg['method'] == 'user_moved' and msg['data']['userId'] == name:
-                self.avatar_html = msg['data']['position'].split(" . ")[1]
+                self.avatar_html = re.split(r" \.|S ", msg['data']['position'], 1)[1]
                 print "cloned" + str(self.avatar_html)
                 return True
             else:
