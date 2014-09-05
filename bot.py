@@ -44,22 +44,29 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, name='__minion__', room_id='eab63d0ea060b828578a4ae044f24d03', owner=None,
+    def __init__(self, userid_txt='userid.txt', name=None, room_id='eab63d0ea060b828578a4ae044f24d03', owner=None,
                  command_line_input=True):
         self.state = STATES.SLEEPING
         self.name = name
         self.room_id = room_id
         self.owner = owner
         self.listeners = []
+        if userid_txt is not None:
+            try:
+                self.parse_avatar_txt(userid_txt)
+            except Exception as e:  # emergency backup avatar
+                print "Error parsing userid.txt: " + str(e)
+                self.avatar_html = "<FireBoxRoom>|<Assets>|<AssetObject~id=&nullhead&~/>|<AssetObject~id=&BOT&~src=&http://varx.org/janusvr/avatars/claptrap/Claptrap5.obj&~mtl=&http://varx.org/janusvr/avatars/claptrap/Claptrap5.mtl&~/>|</Assets>|<Room>|\
+                <Ghost~id=&%s&~head_id=&nullhead&~body_id=&BOT&~scale=&1.2~1.2~1.2&~col=&1.66~1.66~1.66&~lighting=&false&~eye_pos=&0~0.5~-0.25&~/>|</Room>|</FireBoxRoom>|" % (self.name)
+
+
 
         #avatar
-        #TODO: figure out what each one of these values represents and turn it into a list of floats
+        #TODO: figure out what each one of these values represents
         self.avatar_pos = [float(x) for x in
                             "-0.0822233 -0.960175 6.24151 0.00863815 -0.14263 -0.989738 0.00863815 -0.14263 -0.989738 0.00124479 0.989776 -0.142625".split(" ")]
         self.avatar_scale = 1
         #self.avatar_html = "<FireBoxRoom>|<Assets>|</Assets>|<Room>|<Ghost~id=&%s&~scale=&1.00~1.00~1.00&~/>|</Room>|</FireBoxRoom>|" % (self.name)
-        self.avatar_html = "<FireBoxRoom>|<Assets>|<AssetObject~id=&nullhead&~/>|<AssetObject~id=&BOT&~src=&http://varx.org/janusvr/avatars/claptrap/Claptrap5.obj&~mtl=&http://varx.org/janusvr/avatars/claptrap/Claptrap5.mtl&~/>|</Assets>|<Room>|\
-        <Ghost~id=&%s&~head_id=&nullhead&~body_id=&BOT&~scale=&1.2~1.2~1.2&~col=&1.66~1.66~1.66&~lighting=&false&~eye_pos=&0~0.5~-0.25&~/>|</Room>|</FireBoxRoom>|" % (self.name)
         #state specific variables
         self.following = None
 
@@ -70,10 +77,22 @@ class BotProtocol(LineReceiver):
         if command_line_input:
             reactor.callInThread(self._command_line_input)
 
+
+    def parse_avatar_txt(self, file_name):
+        with open(file_name, 'r') as user_file:
+            user_txt = user_file.read()
+            self.name = re.search(r"Ghost id=[\"|\']([\w ]*)[\"|\']", user_txt, flags=re.MULTILINE).group(1)
+            # find everything in between < >
+            tags = re.findall(r'<.*>', user_txt)
+            #now join it back up adn replace everything
+            self.avatar_html = '|'.join(tags).replace(' ', '~').replace('"', '&')
+
+
     def connectionMade(self):
         LineReceiver.connectionMade(self)
         self.state = STATES.LOGGING_IN
         self.login()
+
 
     def _command_line_input(self):
         """
@@ -156,7 +175,6 @@ class BotProtocol(LineReceiver):
         pos = self.avatar_pos
         dist = math.sqrt((self.latest_follow_pos[0] - pos[0])**2 + (self.latest_follow_pos[1] - pos[1])**2 + (self.latest_follow_pos[2] - pos[2])**2)
         if dist > FOLLOW_DIST:
-            print dist
             to_send = self.getAvatarString(pos=new_pos)
             #send it .25 second later
             self.sendLine(json.dumps({"method": "move", "data": to_send}))
@@ -214,8 +232,9 @@ class BotProtocol(LineReceiver):
         """
         self.sendLine(json.dumps({"method": "chat", "data": str(text)}))
         if listen_to_self:
-
             self.chatListener({"method": 'user_chat', "data": {'userId': self.name, "message": text}})
+        else:
+            print (":"+text)
 
     def chatListener(self, msg):
         """
