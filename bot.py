@@ -44,8 +44,8 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, userid_txt='userid.txt', name=None, room_id='eab63d0ea060b828578a4ae044f24d03', owner=None,
-                 command_line_input=True):
+    def __init__(self, userid_txt='userid.txt', name=None, room_id='eab63d0ea060b828578a4ae044f24d03', owner="yawgmoth",
+                 command_line_input=False):
         self.state = STATES.SLEEPING
         self.name = name
         self.room_id = room_id
@@ -174,7 +174,7 @@ class BotProtocol(LineReceiver):
     def do_follow(self, new_pos):
         pos = self.avatar_pos
         dist = math.sqrt((self.latest_follow_pos[0] - pos[0])**2 + (self.latest_follow_pos[1] - pos[1])**2 + (self.latest_follow_pos[2] - pos[2])**2)
-        if dist > FOLLOW_DIST:
+        if dist > float(self.avatar_scale) * FOLLOW_DIST:
             to_send = self.getAvatarString(pos=new_pos)
             #send it .25 second later
             self.sendLine(json.dumps({"method": "move", "data": to_send}))
@@ -187,20 +187,32 @@ class BotProtocol(LineReceiver):
         the FOLLOWING state
         """
         if self.state == STATES.FOLLOWING and self.following is not None:
-            if msg['method'] == 'user_moved' and msg['data']['userId'] == self.following:
+            if 'data' in msg and 'userId' in msg['data'] and msg['data']['userId'] == self.following:
+                if msg['method'] == 'user_moved' :
 
-                pos = [float(x) for x in re.split(r" \.|S ", msg['data']['position'],1)[0].strip().split(" ")]
-                #old_pos = self.avatar_pos
-                self.latest_follow_pos = pos
+                    pos = [float(x) for x in re.split(r" \.|S ", msg['data']['position'],1)[0].strip().split(" ")]
+                    #old_pos = self.avatar_pos
+                    self.latest_follow_pos = pos
 
-                reactor.callLater(.5, self.do_follow, pos)
+                    reactor.callLater(.5, self.do_follow, pos)
+                    #if they called from another room we're subscribed to
+                    if msg['data']['roomId'] != self.room_id:
+                        self.sendLine(json.dumps({'method': 'subscribe', 'data': {'roomId': msg['data']['roomId']}}))
+                        self.sendLine(json.dumps({'method': 'enter_room', 'data': {'roomId': msg['data']['roomId']}}))
+                        self.room_id = msg['data']['roomId']
 
-            elif msg['method'] == 'user_leave' and msg['data']['userId'] == self.following:
-                if 'newRoomId' in msg['data'] is None:
-                    self.state = STATES.STAYING
-                else:
-                    self.sendLine(json.dumps({'method': 'subscribe', 'data': {'roomId': msg['data']['newRoomId']}}))
-                    self.sendLine(json.dumps({'method': 'enter_room', 'data': {'roomId': msg['data']['newRoomId']}}))
+                elif msg['method'] == 'user_leave' :
+                    if 'newRoomId' in msg['data'] is None:
+                        self.state = STATES.STAYING
+                    else:
+                        self.sendLine(json.dumps({'method': 'subscribe', 'data': {'roomId': msg['data']['newRoomId']}}))
+                        self.sendLine(json.dumps({'method': 'enter_room', 'data': {'roomId': msg['data']['newRoomId']}}))
+                        self.room_id = msg['data']['newRoomId']
+
+        #if we have an owner, always subscribe to the room they're in so we can hear them
+        if self.owner is not None and msg['method'] == 'user_leave' and  msg['data']['userId'] == self.owner:
+            self.sendLine(json.dumps({'method': 'subscribe', 'data': {'roomId': msg['data']['newRoomId']}}))
+            
         return False  # never eat
 
     def clone_avatar(self, name):

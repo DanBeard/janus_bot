@@ -2,6 +2,6 @@
 <Assets>
 </Assets>
 <Room>
-<Ghost id="bot 2" scale="1.00 1.00 1.00" />
+<Ghost id="__minion__" scale="1.00 2.00 1.00" />
 </Room>
 </FireBoxRoom>
