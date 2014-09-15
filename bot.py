@@ -44,7 +44,7 @@ class STATES:
 
 class BotProtocol(LineReceiver):
 
-    def __init__(self, userid_txt='userid.txt', name=None, room_id='eab63d0ea060b828578a4ae044f24d03', owner="yawgmoth",
+    def __init__(self, userid_txt='userid.txt', name="__minion__", room_id='eab63d0ea060b828578a4ae044f24d03', owner="yawgmoth",
                  command_line_input=False):
         self.state = STATES.SLEEPING
         self.name = name
